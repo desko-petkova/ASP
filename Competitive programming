@@ -1,3 +1,23 @@
+1. Основни дефиниции
+Thread (нишка)
+Thread е основна единица на изпълнение в операционната система. 
+Създаваш нова нишка от текущия процес и й задаваш код за изпълнение. 
+Нишките се управляват на ниво операционна система и използват хардуерни ресурси директно.
+- Синхронен по природа (няма async/await)
+- Управлява се от операционната система
+- Всеки Thread има отделен стек, което води до по-голям разход на памет
+- Подходящ за дълги и постоянни задачи, като обработка на данни в реално време или изчисления.
+
+Task (задача)
+Task е абстракция над нишките и е част от Task Parallel Library (TPL).
+Той позволява по-високо ниво на управление на паралелните операции. 
+Task може да работи асинхронно (с async/await), което прави кода по-четим и ефективен.
+- Асинхронен по природа (await Task.Delay(1000))
+- Управлява се от CLR (Common Language Runtime) и използва ThreadPool
+- По-малко натоварващ за системата, защото използва споделен пул от нишки
+- Подходящ за краткотрайни асинхронни операции, като мрежови заявки, работа с файлове и т.н.
+
+2. Thread примери
 //Многонишкова програма, реализирана с помощта на класа Thread в C#.
 //Стартират се две нишки (t1 и t2), които изпълняват метода PrintNumbers с различни входни параметри.
 //Всяка нишка ще отпечатва числата от 0 до 4. 
@@ -33,8 +53,8 @@ class Program
     }
 }
 ---------------------------------------------------------------------------------------------
-Проблеми:
-1. Race Condition
+2.1. Проблеми:
+2.1.1. Race Condition
 //sharedCounter е споделена променлива между двете нишки (t1 и t2).
 //Всяка нишка изпълнява sharedCounter++ 10 милион пъти.
 //В идеалния случай крайната стойност на sharedCounter трябва да бъде 20 000 000.
@@ -70,3 +90,208 @@ class Program
         }
     }
 }
+------------------------------------------------------------------------------------------------------
+2.1.2. Deadlock (път без изход)
+//Thread 1 заключва lock1 и чака lock2, но Thread 2 вече е заключил lock2 и чака lock1.
+//Това води до взаимно блокиране, при което нито една от нишките не може да продължи.
+
+class Program
+{
+    static readonly object lock1 = new object();
+    static readonly object lock2 = new object();
+
+    static void Main()
+    {
+        Thread t1 = new Thread(Thread1Work);
+        Thread t2 = new Thread(Thread2Work);
+
+        t1.Start();
+        t2.Start();
+
+        t1.Join();
+        t2.Join();
+
+        Console.WriteLine("Програмата приключи успешно (няма да се случи при deadlock).");
+    }
+
+    static void Thread1Work()
+    {
+        lock (lock1)
+        {
+            Console.WriteLine("Thread 1: Заключи lock1");
+            Thread.Sleep(1000);  // Симулира продължителна операция
+            lock (lock2)
+            {
+                Console.WriteLine("Thread 1: Заключи lock2");
+            }
+        }
+    }
+
+    static void Thread2Work()
+    {
+        lock (lock2)//решение на deadlock - нишките да заключват ресурсите в един и същ ред lock (lock1)
+        {
+            Console.WriteLine("Thread 2: Заключи lock2");
+            Thread.Sleep(1000);  // Симулира продължителна операция
+            lock (lock1)// lock (lock2)
+            {
+                Console.WriteLine("Thread 2: Заключи lock1");
+            }
+        }
+
+    }
+}
+------------------------------------------------------------------------------------------------------
+2.3. Превенция на Deadlock сценарии
+2.3.1. Semaphore - позволява ограничен брой нишки да получат достъп до даден ресурс едновременно.
+//Само 2 нишки могат да влязат в критичната секция едновременно.
+//Останалите нишки чакат, докато се освободи слот.
+//Всяка нишка влиза, изчаква 2 секунди и напуска секцията, освобождавайки ресурса.
+class Program
+{
+    static Semaphore semaphore = new Semaphore(2, 2);  // Максимум 2 нишки могат да влязат едновременно
+
+    static void Main()
+    {
+        for (int i = 1; i <= 5; i++)
+        {
+            Thread t = new Thread(AccessResource);
+            t.Start(i);  // Стартира нишка с идентификатор i
+        }
+    }
+
+    static void AccessResource(object id)
+    {
+        Console.WriteLine($"Нишка {id} чака да влезе в критичната секция...");
+        semaphore.WaitOne();  // Влиза в критичната секция, ако има свободен слот
+        Console.WriteLine($"Нишка {id} влезе в критичната секция!");
+
+        Thread.Sleep(2000);  // Симулира работа с ресурса
+
+        Console.WriteLine($"Нишка {id} напуска критичната секция.");
+        semaphore.Release();  // Освобождава слота
+    }
+}
+------------------------------------------------------------------------------------------
+2.3.2. Mutex (Mutual Exclusion) е по-строг от lock и може да се използва дори между различни процеси. За разлика от lock, Mutex е по-бавен, но предлага междупроцесно синхронизиране.
+//   Mutex позволява само една нишка да влезе в критичната секция.
+//   Останалите нишки чакат, докато текущата не освободи мютекса
+class Program
+{
+    static Mutex mutex = new Mutex();
+
+    static void Main()
+    {
+        for (int i = 1; i <= 5; i++)
+        {
+            Thread t = new Thread(AccessResource);
+            t.Start(i);  // Стартира нишка с идентификатор i
+        }
+    }
+
+    static void AccessResource(object id)
+    {
+        Console.WriteLine($"Нишка {id} чака да заключи мютекса...");
+        mutex.WaitOne();  // Заключва мютекса
+        Console.WriteLine($"Нишка {id} заключи мютекса!");
+
+        Thread.Sleep(2000);  // Симулира работа с ресурса
+
+        Console.WriteLine($"Нишка {id} освобождава мютекса.");
+        mutex.ReleaseMutex();  // Освобождава мютекса
+    }
+}
+----------------------------------------------------------------------------
+2.1.3. Starvation (гладуване на нишка) се случва, когато една или повече нишки не могат да получат достъп до споделен ресурс,
+защото други нишки с по-висок приоритет постоянно ги изместват. Това може да доведе до екстремни ситуации, в които нископриоритетните нишки никога
+не получават процесорно време.
+class Program
+{
+    static void Main()
+    {
+        // Създаваме три нишки с различен приоритет
+        Thread t1 = new Thread(DoWork) { Name = "High Priority" };
+        Thread t2 = new Thread(DoWork) { Name = "Normal Priority" };
+        Thread t3 = new Thread(DoWork) { Name = "Low Priority" };
+
+        // Настройваме приоритетите
+        t1.Priority = ThreadPriority.Highest;
+        t2.Priority = ThreadPriority.Normal;
+        t3.Priority = ThreadPriority.Lowest;
+    
+        // Стартираме нишките
+        t1.Start();
+        t2.Start();
+        t3.Start();
+    
+        t1.Join();
+        t2.Join();
+        t3.Join();
+    
+        Console.WriteLine("Всички нишки приключиха.");
+    }
+    
+    static void DoWork()
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            Console.WriteLine($"{Thread.CurrentThread.Name}:{i}");
+            Thread.Sleep(10);  // Пауза за симулиране на работа
+        }
+    }
+}
+-------------------------------------------------------------------------------------
+3. Task примери
+Task.Delay(1000) е асинхронна операция, която не блокира текущата нишка.
+Задачите се изпълняват едновременно, без да блокират главната нишка.
+await Task.WhenAll(task1, task2) изчаква двете задачи да приключат.
+По-малък разход на ресурси, защото Task използва ThreadPool вместо да създава нови нишки.
+
+class Program
+{
+    static async Task Main()
+    {
+        Task task1 = PrintNumbersAsync("Задача 1");
+        Task task2 = PrintNumbersAsync("Задача 2");
+
+        await Task.WhenAll(task1, task2);
+
+        Console.WriteLine("Всички задачи приключиха!");
+    }
+
+    static async Task PrintNumbersAsync(string taskName)
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Console.WriteLine($"{taskName}: {i}");
+            await Task.Delay(1000);  // Асинхронна пауза от 1 секунда
+        }
+    }
+}
+---------------------------------------------------------------------------
+Task решава проблема, който се наблюдава в примера със Starvation.
+class Program
+{
+    static async Task Main()
+    {
+        // Стартираме асинхронно две задачи
+        Task task1 = Task.Run(() => DoWork("Task 1"));
+        Task task2 = Task.Run(() => DoWork("Task 2"));
+        Task task3 = Task.Run(() => DoWork("Task 3"));
+
+        await Task.WhenAll(task1, task2, task3);  // Изчакваме и двете задачи да приключат
+        Console.WriteLine("Всички нишки приключиха.");
+    }
+
+    static async Task DoWork(string taskName)
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            Console.WriteLine($"{taskName}: {i}");
+            await Task.Delay(500);  // Не блокира нишката
+        }
+    }
+}
+Task е много по-мощен и ефективен начин за управление на конкурентни операции в C#, защото осигурява автоматично управление на нишките чрез ThreadPool.
+За разлика от Thread, Task решава редица проблеми като starvation, deadlock и неоптимално разпределение на ресурси.
+С помощта на async/await синтаксиса, Task дава възможност за асинхронни операции, които не блокират нишките и позволяват на приложението да бъде по-отзивчиво и ефективно.
