@@ -1,0 +1,72 @@
+//Многонишкова програма, реализирана с помощта на класа Thread в C#.
+//Стартират се две нишки (t1 и t2), които изпълняват метода PrintNumbers с различни входни параметри.
+//Всяка нишка ще отпечатва числата от 0 до 4. 
+//Между отпечатванията има пауза от 500 ms (Thread.Sleep(500)), за да се види ясно паралелното им изпълнение.
+
+using System;
+using System.Threading;
+
+class Program
+{
+    static void Main()
+    {
+        Thread t1 = new Thread(PrintNumbers);
+        Thread t2 = new Thread(PrintNumbers);
+
+        t1.Start(1);  // Стартира първата нишка с параметър 1
+        t2.Start(2);  // Стартира втората нишка с параметър 2
+
+        t1.Join();    // Изчаква t1 да приключи
+        t2.Join();    // Изчаква t2 да приключи
+
+        Console.WriteLine("Всички нишки приключиха!");
+    }
+
+    static void PrintNumbers(object id)
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Console.WriteLine($"Нишка {id}: {i}");
+            Thread.Sleep(500);  // Пауза от 500ms, за да се види конкурентността
+        }
+
+    }
+}
+---------------------------------------------------------------------------------------------
+Проблеми:
+1. Race Condition
+//sharedCounter е споделена променлива между двете нишки (t1 и t2).
+//Всяка нишка изпълнява sharedCounter++ 10 милион пъти.
+//В идеалния случай крайната стойност на sharedCounter трябва да бъде 20 000 000.
+//Примерен изход - Крайна стойност на sharedCounter: 17250181 
+//Добавяме lock около кода, който заключва sharedCounter, за да гарантираме, че само една нишка го изпълнява в даден момент: вече резултатът от изпълнението е 20 000 000.
+class Program
+{
+    static int sharedCounter = 0;  // Споделена променлива между нишките
+//  static readonly object lockObject = new object();
+
+    static void Main()
+    {
+        Thread t1 = new Thread(IncrementCounter);
+        Thread t2 = new Thread(IncrementCounter);
+
+        t1.Start();  // Стартира първата нишка
+        t2.Start();  // Стартира втората нишка
+
+        t1.Join();   // Изчаква t1 да приключи
+        t2.Join();   // Изчаква t2 да приключи
+
+        Console.WriteLine($"Крайна стойност на sharedCounter: {sharedCounter}");
+    }
+
+    static void IncrementCounter()
+    {
+        for (int i = 0; i < 10000000; i++)  // Увеличаваме sharedCounter 1 милион пъти
+        {
+           // lock (lockObject)
+            //{
+                sharedCounter++;  // Тук възниква race condition
+            //}
+        }
+    }
+}
